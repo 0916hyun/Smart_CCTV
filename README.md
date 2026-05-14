@@ -1,418 +1,287 @@
-# 🛡️ Smart CCTV with GPT
+# 🛡️ 저화질에 강건한 AI 이상탐지 CCTV
 
-> GPT 기반의 **실내·실외 스마트 방범 시스템**입니다.
-> CCTV 화면을 분석하여 사람 출현, 택배/배달 물체, 침입자, 낙상, 화재, 침수 등의 상황을 감지하고, 필요 시 **녹화 → 요약 → 로그 저장 → 메일 알림**까지 연결합니다.
+직접 설계한 경량 CNN 오토인코더(ConvAE)와 VLM(GPT-4o-mini)을 결합한 2단계 하이브리드 이상 탐지 시스템입니다. 저화질·야간 CCTV 환경에서도 강건하게 동작하며, 1차 이상 탐지 → 2차 VLM 세부 분석 → 담당자 긴급 알림까지 자동화된 파이프라인을 구성합니다.
 
 ---
 
 ## 📌 1. Project Overview
 
-기존 CCTV는 영상을 저장하거나 사람이 직접 확인해야 하는 경우가 많습니다.
-이 프로젝트는 이러한 한계를 줄이기 위해, **비전-언어 모델(VLM)** 을 활용하여 장면을 이해하고 실제 기능과 연결되는 **스마트 CCTV 백엔드**를 구현한 프로젝트입니다.
+이 프로젝트는 CCTV 영상에서 위험·이상 상황을 실시간으로 탐지하고 대응하는 AI 감시 시스템입니다.
 
-### ✨ 주요 기능
-
-#### 🌳 Outdoor Monitoring
-
-* 👤 사람 등장 여부 감지
-* 📦 문 앞 택배/배달 박스 감지
-* 🎥 사람 등장 시 자동 녹화
-* 📝 연속 프레임 기반 행동 요약
-* 📧 택배 도착 시 메일 알림
-
-#### 🏠 Indoor Monitoring
-
-* 🧍 재실 모드: 낙상 감지
-* 🚨 외출 모드: 침입자 감지
-* 🔥 화재/연기 감지
-* 💧 침수 감지
-* 🧾 침입자 인상착의 및 행동 요약
-
-#### ⚙️ System Features
-
-* 🖥️ Gradio 기반 실내·실외 통합 UI
-* 🗂️ SQLite3 기반 이벤트 로그 저장
-* 📮 Gmail SMTP 기반 위급 상황 알림 전송
-* 🔎 임베딩 기반 이벤트 검색 기능
+- **1차 감지**: 직접 설계한 경량 ConvAE로 이상 패턴을 즉각 탐지
+- **2차 분석**: 이상 감지 시에만 VLM을 호출하여 위협 유형 분류 및 상황 설명
+- **저화질 강건성**: 픽셀 재구성 오차 기반 탐지로 화질에 덜 의존적
+- **폐쇄망 대응**: ONNX 변환으로 외부 API 없이 단독 운용 가능
 
 ---
 
-## ❓ 2. Why This Project?
+## ✨ 2. 주요 기능
 
-스마트 홈 환경에서는 단순 모션 감지만으로 실제 상황을 충분히 이해하기 어렵습니다.
-예를 들어 다음과 같은 질문은 단순 객체 탐지만으로 처리하기 어렵습니다.
+### 🔍 이상 탐지 (ConvAE)
+- 정상 영상만으로 학습된 경량 CNN 오토인코더
+- 16프레임 시퀀스 입력 → 재구성 오차(AE Score)로 이상 감지
+- 학습 데이터에 없는 미지 위협도 탐지 가능
+- ONNX 변환 → 엣지 디바이스 배포 가능
 
-* "현관 앞에 사람이 온 것인가?"
-* "문 앞에 놓인 물체가 택배인가?"
-* "실내에서 누군가 쓰러진 것인가?"
-* "외출 중 집 안에 침입자나 화재, 침수가 발생했는가?"
+### 🤖 VLM 세부 분석 (GPT-4o-mini)
+- 이상 감지 시에만 VLM 호출 (비용 최적화)
+- 4프레임 몽타주 전송으로 시간 흐름 기반 위협 분류
+- 위협 유형: INTRUSION / ABNORMAL_BEHAVIOR / LOITERING / OBJECT_LEFT 등
+- 한국어 위협 설명 자동 생성
 
-이 프로젝트는 이러한 문제를 해결하기 위해, CCTV 영상을 **GPT-4o에 질의하여 장면을 의미적으로 해석**하고, 그 결과를 **녹화·요약·DB 저장·알림 기능**과 연결하도록 설계했습니다.
+### 📊 실시간 모니터링 UI
+- AE Score 실시간 차트 (WARNING / CRITICAL 임계선 표시)
+- 2단계 탐지 로그 (1차 즉각 감지 → 2차 VLM 분류 결과 업데이트)
+- CRITICAL 확정 시 화면 중앙 팝업 알림
 
-즉, 단순한 저장형 CCTV가 아니라
-**장면 이해가 가능한 스마트 감시 시스템**을 목표로 했습니다.
+### 🗃️ 데이터 관리
+- SQLite: 모든 탐지 이벤트 이력 저장 및 조회
+- VectorDB (FAISS): LLM 설명 임베딩 저장 → 유사 과거 사례 검색
 
----
-
-## 🧠 3. Core Idea
-
-이 프로젝트의 핵심 아이디어는 다음과 같습니다.
-
-### 1) 👁️ Vision-Language 기반 장면 이해
-
-전용 감지 모델을 직접 학습시키는 대신, GPT-4o에 이미지를 전달하여 장면을 해석합니다.
-이를 통해 다음과 같은 다양한 판단을 하나의 API 흐름으로 처리할 수 있습니다.
-
-* 사람 유무 판단
-* 박스/택배 존재 여부 판단
-* 낙상 여부 판단
-* 화재/침수 여부 판단
-* 행동 요약 및 인상착의 설명
-
-### 2) 💸 Cost-aware Query Strategy
-
-모든 프레임을 분석하면 비용이 커지기 때문에,
-
-* 평상시: 긴 주기로 감시
-* 이벤트 발생 시: 촘촘한 프레임 샘플링 후 집중 분석
-
-구조로 설계했습니다.
-즉, **평상시 저비용 감시 + 이벤트 발생 시 정밀 분석** 전략입니다.
-
-### 3) 🎬 Event-driven Recording
-
-사람이 등장했을 때만 녹화를 시작하고, 사라지면 종료합니다.
-이를 통해 중요 장면만 저장할 수 있도록 구성했습니다.
-
-### 4) 🗃️ Lightweight Local Logging
-
-이벤트 결과는 SQLite3에 저장되어 UI에서 바로 확인할 수 있습니다.
-별도 대규모 서버 없이 로컬 환경에서도 쉽게 관리할 수 있도록 구성했습니다.
+### 📧 알림
+- LLM이 CRITICAL을 확정한 경우에만 이메일 발송 (오경보 최소화)
+- Gmail SMTP 기반
 
 ---
 
-## 🔄 4. System Pipeline
+## ❓ 3. Why This Project?
 
-### 🌳 Outdoor Pipeline
+단순 모션 감지만으로는 실제 상황을 충분히 이해하기 어렵습니다. 예를 들어 다음과 같은 판단은 기존 방식으로 처리하기 어렵습니다.
 
-```text
-Outdoor Screen Capture
-        ↓
-GPT-4o Image Query
-        ↓
-JSON Response { person, box }
-        ↓
-[person == 1] → Start Recording
-        ↓
-Sample Frames During Recording
-        ↓
-GPT-4o Multi-image Summarization
-        ↓
-Save Summary to DB
-        ↓
-[box detected repeatedly] → Send Mail Alert
+- "이 움직임이 단순 통행인가, 침입인가?"
+- "화면 변화가 조명 변화인가, 화재인가?"
+- "점진적으로 진행되는 위협을 초기에 감지할 수 있는가?"
+
+이 프로젝트는 비지도학습 기반 이상 탐지로 1차 필터링을 수행하고, 이상이 감지된 경우에만 VLM을 호출하여 상황을 자연어로 분류하는 구조를 채택했습니다.
+
+---
+
+## 🧠 4. Core Idea
+
+### 1) 🏗️ 직접 설계한 경량 ConvAE
+
+```
+인코더: Conv2d + BatchNorm + LeakyReLU × 4 (stride=2 다운샘플링)
+         128×128 → 64×64 → 32×32 → 16×16 → 잠재 벡터 (256, 8, 8)
+디코더: ConvTranspose2d + BatchNorm + ReLU × 3 + Sigmoid
+         잠재 벡터 → 128×128 복원
 ```
 
-### 🏠 Indoor Pipeline
+- 파라미터 약 5M → 경량, ONNX 변환 가능
+- UCF-Crime 데이터셋의 정상 영상만으로 학습
+- 재구성 오차(MSE) = AE Score → 임계값 초과 시 이상 판정
 
-#### 🧍 At Home Mode
+### 2) ⚡ 2단계 하이브리드 파이프라인
 
-```text
-Indoor Screen Capture
-        ↓
-GPT-4o Image Query
-        ↓
-Fall Detection
-        ↓
-If detected → Send Mail Alert
+```
+매 프레임: ConvAE → AE Score 계산 (즉각)
+                ↓
+    NORMAL → CLEAR (VLM 호출 없음)
+    WARNING → CAUTION → VLM 4프레임 몽타주 분석
+    CRITICAL → ALERT  → VLM 분석 + 팝업 + 이메일
 ```
 
-#### 🚪 Outside Mode
+### 3) 🎞️ 4프레임 몽타주 전송
 
-```text
-Indoor Screen Capture
+단일 프레임 대신 시간 간격을 둔 4프레임을 가로로 이어붙여 VLM에 전송합니다.
+
+```
+[frame N-36] → [frame N-24] → [frame N-12] → [frame N]
+   과거                                          현재
+```
+
+VLM이 시간 흐름을 보고 판단하므로 단일 프레임 대비 정확도가 향상됩니다.
+
+### 4) 🛡️ 오경보 필터링
+
+- **Hysteresis**: 연속 8프레임 이상 낮은 severity가 유지될 때만 하향
+- **CRITICAL Hold**: CRITICAL 감지 후 15초간 유지
+- **LLM 확정 시에만 알림**: 1차 감지 단독으로는 알림 미발송
+
+---
+
+## 🔄 5. System Pipeline
+
+```
+입력 영상
         ↓
-GPT-4o Image Query
+[매 프레임] ConvAE → AE Score
         ↓
-JSON Response { person, fire, flood }
+  임계값 비교 (Hysteresis + CRITICAL Hold)
         ↓
-Intruder / Fire / Flood 판단
+NORMAL ───────────────────→ CLEAR 표시
         ↓
-[person == 1] → Start Recording
+WARNING / CRITICAL
         ↓
-GPT-4o Multi-image Summarization
+[백그라운드] VLM 4프레임 몽타주 분석
         ↓
-Save Description to DB
+Phase 1 결과 즉각 표시
         ↓
-Send Mail Alert
+Phase 2 VLM 결과 업데이트
+        ↓
+CRITICAL 확정 시
+├── 팝업 알림
+├── SMTP 이메일 발송
+└── VectorDB 저장 (유사 사례 검색용)
+        ↓
+SQLite 이벤트 로그 저장
 ```
 
 ---
 
-## 🛠️ 5. How It Was Implemented
+## 🛠️ 6. How It Was Implemented
 
-### 📷 5.1 Screen Capture
+### 🤖 6.1 ConvAE 학습
+`models/anomaly_ae.py`에 직접 설계한 ConvAE를 UCF-Crime 데이터셋의 NormalVideos로 학습합니다.
 
-실제 RTSP 스트림 대신, 실습 및 프로토타입 환경에 맞게 **화면 캡처 기반**으로 영상을 입력받도록 구현했습니다.
+- 입력: 16프레임 grayscale 시퀀스 (128×128)
+- Loss: MSE (재구성 오차 최소화)
+- 출력: ONNX 변환 모델
 
-* `capture_outdoor()`: 실외 영역 캡처
-* `capture_indoor()`: 실내 영역 캡처
+### ⚙️ 6.2 탐지 엔진
 
-### 🤖 5.2 GPT API Query
+- `SelfModelEngine`: ConvAE ONNX 추론, 매 프레임 AE Score 계산
+- `GPTEngine`: VLM 4프레임 몽타주 분석, JSON 위협 분류
+- `HybridEngine`: ConvAE 1차 → VLM 2차 파이프라인 조율
 
-`gpt_api.py`에서는 OpenAI 비동기 API를 사용해 이미지 질의를 수행합니다.
+### 🔄 6.3 비동기 처리
 
-* `query_with_single_image()`
-
-  * 단일 이미지에 대한 장면 판단
-* `query_with_multiple_image()`
-
-  * 여러 장의 프레임을 이용한 상황 요약
-* `query_with_text()`
-
-  * 텍스트 임베딩 생성
-
-### 🌳 5.3 Outdoor Logic
-
-`run_main_outdoor()`는 일정 주기로 실외 화면을 캡처하고 GPT에게 다음과 같이 질의합니다.
-
-* `person == 1` → 사람이 등장한 것으로 판단 → 녹화 시작
-* `person == 0` → 녹화 중이었다면 종료
-* `box == 1` → 최근 기록을 기준으로 일정 횟수 이상 감지되면 택배 도착 판단
-
-### 🎥 5.4 Recording and Summarization
-
-녹화가 시작되면,
-
-* 0.1초 간격으로 프레임 기록
-* 1초 간격으로 대표 프레임 샘플링
-* 대표 프레임 5장을 GPT에 전달
-* 행동/상황 요약 생성
-* 결과를 SQLite DB에 저장
-
-구조로 동작합니다.
-
-### 🏠 5.5 Indoor Logic
-
-`run_main_indoor()`는 모드에 따라 다르게 동작합니다.
-
-#### 🧍 At Home
-
-* 낙상 여부 중심으로 점검
-* 낙상 감지 시 메일 전송
-
-#### 🚪 Outside
-
-* 사람, 화재, 침수 여부를 동시에 점검
-* 침입자 발생 시 녹화 시작
-* 연속 프레임을 사용해 인상착의와 행동 요약 생성
-* DB 저장 및 알림 전송
-
-### 🖥️ 5.6 UI / Logging / Notification
-
-Gradio UI에서는 다음을 함께 표시합니다.
-
-* 현재 실내/실외 화면
-* 현재 상태 로그
-* DB에 저장된 최근 설명 결과
-
-또한,
-
-* SQLite3: 이벤트 로그 저장
-* Gmail SMTP: 위급 상황 메일 전송
-
-기능이 연동되어 있습니다.
-
----
-
-## 🗂️ 6. Project Structure
-
-```bash
-.
-├── main.py
-├── outdoor.py
-├── indoor.py
-├── gpt_api.py
-├── utils.py
-├── vector_db.py
-├── database/
-│   ├── db.db
-│   └── embeddings.npy
-├── recordings/
-└── training/
-```
-
-### 📄 File Description
-
-* `main.py`
-  → 전체 Gradio UI 실행 및 실내/실외 파이프라인 orchestration
-
-* `outdoor.py`
-  → 실외 이벤트 녹화, 택배 감지, 행동 요약
-
-* `indoor.py`
-  → 실내 이벤트 녹화, 침입자 행동 및 인상착의 요약
-
-* `gpt_api.py`
-  → GPT-4o 이미지 질의 및 텍스트 임베딩 생성
-
-* `utils.py`
-  → 화면 캡처, 이미지 인코딩, DB 저장/조회, SMTP 메일 전송
-
-* `vector_db.py`
-  → 학습 비디오 요약문 생성 및 임베딩 저장
-
----
-
-## ⚙️ 7. Tech Stack
-
-### 🧩 Backend
-
-* Python
-* OpenAI GPT-4o
-* text-embedding-3-small
-* OpenCV
-* PIL
-* NumPy
-
-### 🖥️ Interface
-
-* Gradio
-
-### 🗃️ Storage / Search
-
-* SQLite3
-* FAISS
-
-### 📬 Notification
-
-* smtplib (Gmail SMTP)
-
-### 🧪 Utility
-
-* PyAutoGUI
-* asyncio
-* threading
-
----
-
-## 🚀 8. Getting Started
-
-### 1️⃣ Install Dependencies
-
-```bash
-pip install openai gradio opencv-python pillow numpy faiss-cpu pyautogui
-```
-
-### 2️⃣ Prepare API Keys
-
-`api_key.py` 파일을 생성한 뒤 아래 내용을 작성합니다.
+LLM 호출을 `asyncio.create_task()`로 백그라운드 실행하여 영상 재생이 끊기지 않습니다.
 
 ```python
-openai_api_key = "YOUR_OPENAI_API_KEY"
-email_id = "YOUR_GMAIL_ID"
-email_pwd = "YOUR_GMAIL_APP_PASSWORD"
+lm_task = asyncio.create_task(engine.gpt.detect_async_montage(frames))
 ```
 
-> Gmail SMTP를 사용하려면 Google 계정의 2단계 인증과 앱 비밀번호 설정이 필요합니다.
+---
 
-### 3️⃣ Prepare Directories
+## 🖥️ 7. UI
+
+Gradio 기반 UI로 구성되어 있습니다.
+
+- **PERIMETER / FACILITY 탭**: 존별 독립 모니터링
+- **LATEST FRAME**: 실시간 탐지 프레임 표시
+- **AE Score 차트**: 이상 점수 실시간 시각화
+- **SYS STATUS**: CLEAR / CAUTION / ALERT 상태 표시
+- **DETECTION LOG**: 2단계 탐지 결과 누적 로그
+- **AUDIT LOG 탭**: SQLite 저장 이벤트 전체 조회
+- **PIPELINE 탭**: 시스템 구조 다이어그램
+
+---
+
+## 🗂️ 8. Project Structure
+
+```
+.
+├── main.py                  # Gradio UI 및 파이프라인 orchestration
+├── outdoor.py               # PERIMETER 존 탐지 파이프라인
+├── indoor.py                # FACILITY 존 탐지 파이프라인
+├── config.py                # 임계값, 학습 파라미터 설정
+├── events.py                # EventResult, EventType, Severity 정의
+├── api_key.py               # API 키 (Git 제외)
+├── engines/
+│   ├── base.py              # DetectionEngine ABC
+│   ├── self_model_engine.py # ConvAE ONNX 추론 엔진
+│   ├── gpt_engine.py        # GPT-4o-mini VLM 엔진
+│   └── hybrid_engine.py     # ConvAE + VLM 하이브리드 엔진
+├── models/
+│   ├── anomaly_ae.py        # ConvAE 모델 정의
+│   └── checkpoints/         # 학습된 가중치 (.pt, .onnx)
+├── utils.py                 # DB 저장, 이메일, 유틸리티
+├── vector_db.py             # FAISS 임베딩 저장 및 검색
+├── quick_test.py            # 클래스별 AE Score 빠른 확인
+├── gpt_test.py              # VLM API 연결 테스트
+├── database/
+│   ├── db.db                # SQLite 이벤트 로그
+│   └── frames/              # 탐지 시 저장 프레임
+└── demo_videos/             # 테스트용 영상
+```
+
+---
+
+## ⚙️ 9. Tech Stack
+
+| 분류 | 기술 |
+|------|------|
+| AI / ML | PyTorch, ONNX Runtime, OpenAI GPT-4o-mini |
+| Interface | Gradio |
+| Storage | SQLite3, FAISS |
+| Notification | smtplib (Gmail SMTP) |
+| Utility | OpenCV, PIL, NumPy, asyncio |
+
+---
+
+## 🚀 10. Getting Started
+
+### 1️⃣ 의존성 설치
 
 ```bash
-mkdir -p recordings
-mkdir -p database
-mkdir -p training
+pip install torch torchvision onnxruntime
+pip install gradio openai opencv-python pillow numpy faiss-cpu
 ```
 
-### 4️⃣ Build Vector DB (Optional)
+### 2️⃣ API 키 설정
+
+`api_key.py` 파일 생성:
+
+```python
+openai_api_key = "sk-..."       # OpenAI API Key
+email_id  = "your_gmail_id"     # Gmail 아이디 (@gmail.com 제외)
+email_pwd = "your_app_password" # Gmail 앱 비밀번호 (16자리)
+```
+
+### 3️⃣ 임계값 설정
 
 ```bash
-python vector_db.py
+python quick_test.py  # 클래스별 AE Score 확인 후 config.py 조정
 ```
 
-이 스크립트는 `training/` 폴더의 비디오를 읽어 요약문을 만들고, 이를 임베딩으로 변환해 `database/embeddings.npy`에 저장합니다.
-
-### 5️⃣ Run App
+### 4️⃣ 실행
 
 ```bash
 python main.py
+# http://localhost:7860 접속
 ```
 
-실행 후 Gradio UI에서 실내/실외 모니터링 화면을 확인할 수 있습니다.
+---
+
+## 🔍 11. VectorDB 검색 기능
+
+CRITICAL 이벤트 발생 시 LLM 설명을 임베딩하여 FAISS에 저장합니다.
+
+```
+새 CRITICAL 이벤트 → LLM 설명 임베딩 → FAISS 검색 → 유사 과거 사례 반환
+```
+
+단순 키워드 검색이 아닌 의미 기반 유사 사례 검색으로, 반복 패턴 위협 분석에 활용할 수 있습니다.
 
 ---
 
-## 🧪 9. Example Features
+## ⚠️ 12. Limitations
 
-### 🌳 Outdoor
-
-* 👤 현관 앞 사람 출현 감지
-* 🎥 사람 등장 시 자동 녹화
-* 📝 연속 프레임 기반 행동 요약
-* 📦 택배/배달 물체 감지
-* 📧 택배 도착 메일 알림
-
-### 🏠 Indoor
-
-* 🧍 재실 시 낙상 감지
-* 🚨 외출 시 침입자 감지
-* 🔥 화재/연기 감지
-* 💧 침수 감지
-* 🧾 침입자 인상착의 및 행동 요약 저장
+- 영상 파일 입력 기반 프로토타입 (RTSP 스트림 미지원)
+- ConvAE는 학습 환경과 크게 다른 카메라에서는 임계값 재조정 필요
+- 저화질 이상 장면(방화, 폭발)에서 VLM 오분류 가능성 존재
+- 장시간 운용 시 API 비용 모니터링 필요
 
 ---
 
-## 🔍 10. Search / Retrieval Feature
+## 🔮 13. Future Work
 
-이 프로젝트에는 간단한 **벡터 검색 기능**도 포함되어 있습니다.
-
-* 학습용 영상들을 요약문으로 변환
-* 요약문을 임베딩으로 변환
-* 사용자의 질의를 임베딩으로 변환
-* FAISS를 이용해 가장 유사한 이벤트 검색
-
-즉, 단순 감시뿐 아니라 **과거 이벤트 검색**까지 확장 가능한 구조를 갖고 있습니다.
+- 📡 실제 IP Camera / RTSP 스트림 연동
+- 🧠 ConvAE → ConvLSTM-AE 교체로 시간적 의존성 명시적 학습
+- 🗺️ 다중 카메라 존 관리 및 통합 대시보드
+- 📱 모바일 알림 연동
+- 🏷️ 자동 임계값 캘리브레이션
 
 ---
 
-## ⚠️ 11. Limitations
+## ✅ 14. Summary
 
-* 실제 IP Camera / RTSP 스트림이 아닌 **화면 캡처 기반 시뮬레이션**입니다.
-* 판단 결과가 GPT 응답 품질에 의존합니다.
-* 프롬프트 및 규칙 기반 로직이라 환경에 따라 오탐/미탐 가능성이 있습니다.
-* 로컬 프로토타입 중심 구현이므로 상용 서비스 수준의 보안/예외 처리는 추가 보완이 필요합니다.
-* 지속적인 API 호출 구조이므로 비용 최적화가 중요합니다.
+**직접 설계한 경량 ConvAE 이상 탐지 → VLM 세부 분석 → DB 저장 → 긴급 알림**
 
----
+까지 이어지는 2단계 하이브리드 파이프라인을 구현했습니다.
 
-## 🔮 12. Future Work
-
-* 📡 실제 IP Camera / RTSP 스트림 연동
-* 📱 모바일 앱 또는 웹 대시보드 연동
-* 🧠 객체 탐지 모델 + VLM 하이브리드 구조 적용
-* 🗂️ 이벤트 로그와 녹화 파일 자동 매칭
-* 🔔 사용자별 알림 정책 설정
-* 📊 이벤트 통계 및 관리용 대시보드 고도화
-* 🏷️ 더 정교한 위험 상황 분류 체계 확장
-
----
-
-## ✅ 13. Summary
-
-이 프로젝트는 단순 영상 저장용 CCTV를 넘어,
-
-**장면 이해 → 이벤트 판단 → 자동 녹화 → 자연어 요약 → 로그 저장 → 알림 전송**
-
-까지 이어지는 **스마트 방범 파이프라인**을 Python 기반으로 구현한 프로젝트입니다.
-
-특히 GPT-4o를 활용해,
-
-* 실외 택배 감지
-* 사람 출현 감시
-* 실내 낙상 감지
-* 외출 중 침입자/화재/침수 감지
-
-와 같은 기능을 유연하게 구성할 수 있다는 점이 핵심입니다.
-
----
-
+- 저화질·야간 CCTV에서도 강건한 이상 탐지
+- 미지 위협 대응 (정상 패턴만 학습, 벗어나면 감지)
+- ConvAE 매 프레임 실시간 처리로 즉각적인 1차 감지
+- ONNX 기반 엣지 배포 가능
