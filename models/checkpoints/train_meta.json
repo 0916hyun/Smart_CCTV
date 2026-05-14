@@ -1,0 +1,11 @@
+{
+  "best_loss": 0.0009904442874213563,
+  "epochs": 20,
+  "seq_len": 16,
+  "frame_size": [
+    128,
+    128
+  ],
+  "data_dir": "D:/CCTV/train/NormalVideos",
+  "dataset": "UCF-Crime NormalVideos"
+}
