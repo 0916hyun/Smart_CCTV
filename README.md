@@ -1,5 +1,7 @@
 # 🛡️ 저화질에 강건한 AI 이상탐지 CCTV
 
+[![Demo Video](https://img.youtube.com/vi/qo1KAWjG7HQ/maxresdefault.jpg)](https://youtu.be/qo1KAWjG7HQ)
+
 직접 설계한 경량 CNN 오토인코더(ConvAE)와 VLM(GPT-4o-mini)을 결합한 2단계 하이브리드 이상 탐지 시스템입니다. 저화질·야간 CCTV 환경에서도 강건하게 동작하며, 1차 이상 탐지 → 2차 VLM 세부 분석 → 담당자 긴급 알림까지 자동화된 파이프라인을 구성합니다.
 
 ---
